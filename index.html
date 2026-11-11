@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover">
+<title>کفتر</title>
+<style>
+html,body{margin:0;height:100%;background:#1b2a3a;overflow:hidden;display:flex;align-items:center;justify-content:center}
+canvas{touch-action:none;display:block}
+</style>
+</head>
+<body>
+<canvas id="c" width="800" height="450"></canvas>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const GY=390,G=0.35,SX=140,SY=300,R=14;
+const S={};
+['launch','hit','cat','win','lose','music'].forEach(n=>{const a=new Audio(n+'.mp3');a.preload='auto';S[n]=a});
+S.music.loop=true;S.music.volume=0.4;
+function snd(n){const a=S[n];try{a.currentTime=0;a.play().catch(()=>{})}catch(e){}}
+function fit(){const s=Math.min(innerWidth/800,innerHeight/450);cv.style.width=800*s+'px';cv.style.height=450*s+'px'}
+addEventListener('resize',fit);fit();
+const LV=[
+ {b:[[540,0],[580,0]],c:[[560,1]]},
+ {b:[[520,0],[560,0],[600,0],[540,1],[580,1]],c:[[560,2],[680,0]]},
+ {b:[[500,0],[500,1],[620,0],[620,1],[620,2],[740,0]],c:[[500,2],[620,3],[740,1]]}
+];
+let lvl=0,obj,bird,left,score=0,state,timer,msg;
+function load(n){
+ lvl=n;obj=[];const L=LV[n];
+ L.b.forEach(([x,r])=>obj.push({t:'b',x,y:GY-(r+1)*40,w:40,h:40,vx:0,vy:0,hp:45}));
+ L.c.forEach(([x,r])=>obj.push({t:'c',x,y:GY-r*40-36,w:36,h:36,vx:0,vy:0,hp:20}));
+ left=3;msg='';nextBird();
+}
+function nextBird(){
+ if(!obj.some(o=>o.t=='c')){state='win';snd('win');msg='آفرین! برای مرحله‌ی بعد بزن';return}
+ if(left<=0){state='lose';snd('lose');msg='باختی! برای تلاش دوباره بزن';return}
+ left--;bird={x:SX,y:SY,vx:0,vy:0};state='wait';timer=0;
+}
+function pos(e){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*800/r.width,y:(e.clientY-r.top)*450/r.height}}
+cv.addEventListener('pointerdown',e=>{
+ const p=pos(e);
+ if(S.music.paused)S.music.play().catch(()=>{});
+ if(state=='win'){load((lvl+1)%LV.length);return}
+ if(state=='lose'){load(lvl);return}
+ if(state=='wait'&&Math.hypot(p.x-bird.x,p.y-bird.y)<70){state='drag';cv.setPointerCapture(e.pointerId)}
+});
+cv.addEventListener('pointermove',e=>{
+ if(state!='drag')return;
+ const p=pos(e);let dx=p.x-SX,dy=p.y-SY,d=Math.hypot(dx,dy);
+ if(d>90){dx*=90/d;dy*=90/d}
+ bird.x=SX+dx;bird.y=SY+dy;
+});
+cv.addEventListener('pointerup',()=>{
+ if(state!='drag')return;
+ const dx=SX-bird.x,dy=SY-bird.y;
+ if(Math.hypot(dx,dy)<10){bird.x=SX;bird.y=SY;state='wait';return}
+ bird.vx=dx*0.17;bird.vy=dy*0.17;state='fly';timer=0;snd('launch');
+});
+function hitBird(o){
+ const cx=Math.max(o.x,Math.min(bird.x,o.x+o.w)),cy=Math.max(o.y,Math.min(bird.y,o.y+o.h));
+ let dx=bird.x-cx,dy=bird.y-cy,d=Math.hypot(dx,dy);
+ if(d<R){
+  const sp=Math.hypot(bird.vx,bird.vy);
+  o.hp-=sp*4;if(sp>2)snd('hit');o.vx+=bird.vx*0.5;o.vy+=bird.vy*0.3;
+  if(d==0){dx=-1;d=1}
+  const nx=dx/d,ny=dy/d,dot=bird.vx*nx+bird.vy*ny;
+  bird.vx=(bird.vx-1.5*dot*nx)*0.5;bird.vy=(bird.vy-1.5*dot*ny)*0.5;
+  bird.x+=nx*(R-d);bird.y+=ny*(R-d);
+ }
+}
+function step(){
+ if(state=='fly'){
+  bird.vy+=G;bird.x+=bird.vx;bird.y+=bird.vy;
+  if(bird.y>GY-R){bird.y=GY-R;bird.vy*=-0.3;bird.vx*=0.9}
+  obj.forEach(hitBird);
+  timer++;
+  const slow=Math.hypot(bird.vx,bird.vy)<0.8&&bird.y>=GY-R-1;
+  if(slow||bird.x>860||bird.x<-60||timer>420){state='wait2';timer=0}
+ }
+ if(state=='wait2'){timer++;if(timer>70)nextBird()}
+ obj.forEach(o=>{
+  o.vy+=G;o.x+=o.vx;o.y+=o.vy;
+  if(o.y+o.h>GY){o.y=GY-o.h;if(o.vy>7)o.hp-=o.vy*2;o.vy=0;o.vx*=0.8}
+  o.vx*=0.98;
+ });
+ for(let i=0;i<obj.length;i++)for(let j=i+1;j<obj.length;j++){
+  const a=obj[i],b=obj[j];
+  const ox=Math.min(a.x+a.w,b.x+b.w)-Math.max(a.x,b.x),oy=Math.min(a.y+a.h,b.y+b.h)-Math.max(a.y,b.y);
+  if(ox>0&&oy>0){
+   if(oy<ox){
+    const up=a.y<b.y?a:b,dn=up==a?b:a;
+    const imp=Math.abs(up.vy-dn.vy);
+    if(imp>7){up.hp-=imp*2;dn.hp-=imp*2}
+    up.y-=oy/2;dn.y+=oy/2;up.vy=Math.min(0,dn.vy);dn.vy=Math.max(dn.vy,0)*0.5;
+    up.vx*=0.9;dn.vx*=0.9;
+   }else{
+    const l=a.x<b.x?a:b,r=l==a?b:a;
+    l.x-=ox/2;r.x+=ox/2;const t=l.vx;l.vx=r.vx*0.6;r.vx=t*0.6;
+   }
+  }
+ }
+ const before=obj.length;
+ obj=obj.filter(o=>{if(o.hp<=0){score+=o.t=='c'?100:20;if(o.t=='c')snd('cat');return false}return true});
+ if(obj.length!=before&&state=='wait'&&!obj.some(o=>o.t=='c'))nextBird();
+}
+function drawBird(x,y){
+ ctx.fillStyle='#8a94a3';ctx.beginPath();ctx.arc(x,y,R,0,7);ctx.fill();
+ ctx.fillStyle='#5f6a7a';ctx.beginPath();ctx.ellipse(x-3,y+3,8,5,-0.4,0,7);ctx.fill();
+ ctx.fillStyle='#3fa66b';ctx.beginPath();ctx.arc(x+7,y-3,5,0,7);ctx.fill();
+ ctx.fillStyle='#f5a623';ctx.beginPath();ctx.moveTo(x+13,y-4);ctx.lineTo(x+22,y);ctx.lineTo(x+13,y+1);ctx.fill();
+ ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x+9,y-5,3,0,7);ctx.fill();
+ ctx.fillStyle='#000';ctx.beginPath();ctx.arc(x+10,y-5,1.4,0,7);ctx.fill();
+}
+function draw(){
+ ctx.fillStyle='#87c7e8';ctx.fillRect(0,0,800,450);
+ ctx.fillStyle='#5aa65a';ctx.fillRect(0,GY,800,60);
+ ctx.fillStyle='#4a8a4a';ctx.fillRect(0,GY,800,6);
+ ctx.fillStyle='#6b4423';ctx.fillRect(SX-5,SY+10,10,GY-SY-10);
+ obj.forEach(o=>{
+  if(o.t=='b'){
+   ctx.fillStyle='#c68b4a';ctx.fillRect(o.x,o.y,o.w,o.h);
+   ctx.strokeStyle='#8a5a2a';ctx.lineWidth=2;ctx.strokeRect(o.x+1,o.y+1,o.w-2,o.h-2);
+   ctx.beginPath();ctx.moveTo(o.x,o.y+o.h/2);ctx.lineTo(o.x+o.w,o.y+o.h/2);ctx.stroke();
+  }else{
+   ctx.font='34px serif';ctx.textBaseline='top';ctx.textAlign='left';ctx.fillText('🐱',o.x,o.y);
+  }
+ });
+ if(state=='wait'||state=='drag'){
+  ctx.strokeStyle='#3b2412';ctx.lineWidth=4;
+  ctx.beginPath();ctx.moveTo(SX-8,SY+6);ctx.lineTo(bird.x,bird.y);ctx.lineTo(SX+8,SY+6);ctx.stroke();
+  if(state=='drag'){
+   let x=bird.x,y=bird.y,vx=(SX-bird.x)*0.17,vy=(SY-bird.y)*0.17;
+   ctx.fillStyle='rgba(255,255,255,.8)';
+   for(let i=0;i<22;i++){vy+=G;x+=vx;y+=vy;if(i%2==0){ctx.beginPath();ctx.arc(x,y,3,0,7);ctx.fill()}}
+  }
+ }
+ if(bird&&state!='win'&&state!='lose')drawBird(bird.x,bird.y);
+ ctx.fillStyle='#fff';ctx.font='bold 18px sans-serif';ctx.textBaseline='top';ctx.textAlign='right';
+ ctx.fillText('مرحله '+(lvl+1)+'   کفتر: '+left+'   امتیاز: '+score,790,10);
+ if(state=='wait'&&left==2&&lvl==0){ctx.textAlign='left';ctx.fillText('کفتر رو بکش عقب و ول کن!',20,10)}
+ if(msg){
+  ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(150,170,500,100);
+  ctx.fillStyle='#fff';ctx.font='bold 26px sans-serif';ctx.textAlign='center';ctx.fillText(msg,400,205);
+ }
+}
+function loop(){step();draw();requestAnimationFrame(loop)}
+load(0);loop();
+</script>
+</body>
+</html>
